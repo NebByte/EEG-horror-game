@@ -47,6 +47,9 @@ if _HAS_SETTINGS:
         vertex_image_model: str = "imagen-3.0-generate-001"
         # Path to a service-account JSON key (optional; ADC is used otherwise).
         google_application_credentials: str | None = None
+        # GCS bucket where generated media (images/audio) is uploaded. When
+        # empty, the Vertex provider skips media upload and returns specs only.
+        gcs_bucket: str | None = None
 
         # --- EEG signal processing ---
         eeg_sample_rate_hz: float = 256.0
@@ -77,6 +80,7 @@ else:  # pragma: no cover - minimal shim used only when deps are absent
             self.google_application_credentials = os.getenv(
                 "GOOGLE_APPLICATION_CREDENTIALS"
             )
+            self.gcs_bucket = os.getenv("GCS_BUCKET")
             self.eeg_sample_rate_hz = float(os.getenv("EEG_SAMPLE_RATE_HZ", "256"))
             self.eeg_window_seconds = float(os.getenv("EEG_WINDOW_SECONDS", "2"))
             self.eeg_channels = ["AF3", "AF4", "F3", "F4", "T7", "T8", "O1", "O2"]
