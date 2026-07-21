@@ -23,6 +23,23 @@ from engine.schemas import Asset, AssetKind, SeedProfile
 
 logger = logging.getLogger(__name__)
 
+# Field names Vertex prediction responses have used for base64 audio bytes.
+_AUDIO_KEYS = ("audioContent", "bytesBase64Encoded", "audio", "content")
+
+
+def _extract_audio_b64(preds: list) -> str | None:
+    """Pull base64 audio from a predictions list, tolerating field-name drift."""
+    if not preds:
+        return None
+    pred = preds[0]
+    if isinstance(pred, str):  # some models return the base64 string directly
+        return pred
+    if isinstance(pred, dict):
+        for key in _AUDIO_KEYS:
+            if pred.get(key):
+                return pred[key]
+    return None
+
 
 class VertexProvider(AssetProvider):
     """Vertex AI-backed generation via the google-genai SDK."""
@@ -205,11 +222,24 @@ class VertexProvider(AssetProvider):
                 timeout=180.0,
             )
             resp.raise_for_status()
-            preds = resp.json().get("predictions", [])
-            if not preds or "audioContent" not in preds[0]:
-                logger.warning("Lyria returned no audio for %s", object_name)
+            data = resp.json()
+            preds = data.get("predictions", [])
+            b64 = _extract_audio_b64(preds)
+            if not b64:
+                # Log what actually came back so the cause is visible: empty
+                # predictions usually mean safety-filtering; a different key
+                # means a schema mismatch.
+                logger.warning(
+                    "Lyria returned no audio for %s. status=%s top_keys=%s "
+                    "pred0_keys=%s snippet=%s",
+                    object_name,
+                    resp.status_code,
+                    list(data.keys()),
+                    list(preds[0].keys()) if preds else "[]",
+                    resp.text[:400],
+                )
                 return None
-            audio_bytes = base64.b64decode(preds[0]["audioContent"])
+            audio_bytes = base64.b64decode(b64)
 
             blob = self._bucket().blob(object_name)
             blob.upload_from_string(audio_bytes, content_type="audio/wav")
