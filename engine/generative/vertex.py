@@ -36,29 +36,44 @@ class VertexProvider(AssetProvider):
         text_model: str,
         image_model: str,
         gcs_bucket: str | None = None,
+        text_location: str = "global",
     ) -> None:
         if not project:
             raise ValueError(
                 "GCP_PROJECT must be set to use the Vertex asset provider."
             )
         self.project = project
+        # Regional endpoint (Imagen + GCS).
         self.location = location
+        # Gemini endpoint ("global" by default).
+        self.text_location = text_location
         self.text_model_name = text_model
         self.image_model_name = image_model
         self.gcs_bucket = gcs_bucket
-        self._client = None  # lazy genai client
+        self._text_client = None  # lazy genai client (global)
+        self._image_client = None  # lazy genai client (regional)
         self._storage_client = None  # lazy GCS client
 
     # --- lazy SDK initialisers ----------------------------------------- #
-    def _genai(self):
-        """Return a cached google-genai client bound to Vertex."""
-        if self._client is None:
+    def _genai_text(self):
+        """genai client for Gemini text, bound to the global endpoint."""
+        if self._text_client is None:
             from google import genai
 
-            self._client = genai.Client(
+            self._text_client = genai.Client(
+                vertexai=True, project=self.project, location=self.text_location
+            )
+        return self._text_client
+
+    def _genai_image(self):
+        """genai client for Imagen, bound to the regional endpoint."""
+        if self._image_client is None:
+            from google import genai
+
+            self._image_client = genai.Client(
                 vertexai=True, project=self.project, location=self.location
             )
-        return self._client
+        return self._image_client
 
     def _bucket(self):
         if self._storage_client is None:
@@ -72,7 +87,7 @@ class VertexProvider(AssetProvider):
         """Ask Gemini for a JSON object (forced via response_mime_type)."""
         from google.genai import types
 
-        client = self._genai()
+        client = self._genai_text()
         resp = client.models.generate_content(
             model=self.text_model_name,
             contents=instruction,
@@ -100,7 +115,7 @@ class VertexProvider(AssetProvider):
         try:
             from google.genai import types
 
-            client = self._genai()
+            client = self._genai_image()
             resp = client.models.generate_images(
                 model=self.image_model_name,
                 prompt=prompt,

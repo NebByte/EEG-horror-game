@@ -42,7 +42,11 @@ if _HAS_SETTINGS:
 
         # --- Google Cloud / Vertex AI ---
         gcp_project: str | None = None
+        # Regional endpoint used for Imagen + GCS (Imagen is region-bound).
         gcp_location: str = "us-central1"
+        # Gemini text models are served from the "global" endpoint on Vertex;
+        # a regional endpoint returns NOT_FOUND for them on many projects.
+        vertex_text_location: str = "global"
         # Use fully-versioned GA model IDs; bare aliases (e.g. "gemini-2.0-flash")
         # are not resolvable through the aiplatform SDK on all projects.
         vertex_text_model: str = "gemini-2.0-flash-001"
@@ -75,6 +79,7 @@ else:  # pragma: no cover - minimal shim used only when deps are absent
             self.asset_provider = os.getenv("ASSET_PROVIDER", "mock")
             self.gcp_project = os.getenv("GCP_PROJECT")
             self.gcp_location = os.getenv("GCP_LOCATION", "us-central1")
+            self.vertex_text_location = os.getenv("VERTEX_TEXT_LOCATION", "global")
             self.vertex_text_model = os.getenv(
                 "VERTEX_TEXT_MODEL", "gemini-2.0-flash-001"
             )

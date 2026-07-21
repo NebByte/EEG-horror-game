@@ -36,6 +36,7 @@ def get_provider(settings: Settings | None = None) -> AssetProvider:
                 text_model=settings.vertex_text_model,
                 image_model=settings.vertex_image_model,
                 gcs_bucket=settings.gcs_bucket,
+                text_location=settings.vertex_text_location,
             )
         except Exception as exc:  # noqa: BLE001 - degrade gracefully
             logger.warning(

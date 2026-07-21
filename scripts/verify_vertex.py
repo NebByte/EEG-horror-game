@@ -56,7 +56,12 @@ async def main() -> None:
     )
 
     print("\nGenerating a real asset bank (this calls Gemini + Imagen)...\n")
-    bank = await AssetPipeline(provider).build_bank(seed)
+    try:
+        bank = await AssetPipeline(provider).build_bank(seed)
+    except Exception as exc:  # noqa: BLE001 - diagnostic path
+        print(f"Generation failed: {exc}\n")
+        _list_available_models(settings)
+        raise SystemExit(1)
 
     print("CHARACTERS:")
     for c in bank.characters:
@@ -82,6 +87,37 @@ async def main() -> None:
         if with_media
         else "\n⚠ No gs:// media URIs — check GCS_BUCKET and the Imagen model access."
     )
+
+
+def _list_available_models(settings) -> None:
+    """Print base models the project can actually see, per endpoint.
+
+    Helps diagnose NOT_FOUND: run this to discover valid model names/regions.
+    """
+    from google import genai
+    from google.genai import types
+
+    for label, loc in (
+        ("TEXT endpoint", settings.vertex_text_location),
+        ("IMAGE endpoint", settings.gcp_location),
+    ):
+        print(f"--- base models visible at {label} (location={loc}) ---")
+        try:
+            client = genai.Client(
+                vertexai=True, project=settings.gcp_project, location=loc
+            )
+            names = []
+            for m in client.models.list(
+                config=types.ListModelsConfig(query_base=True)
+            ):
+                names.append(m.name)
+            gemini = [n for n in names if "gemini" in n.lower()]
+            imagen = [n for n in names if "imagen" in n.lower()]
+            for n in (gemini + imagen) or names[:40]:
+                print(f"   {n}")
+            print(f"   ({len(names)} total)\n")
+        except Exception as exc:  # noqa: BLE001
+            print(f"   could not list models: {exc}\n")
 
 
 if __name__ == "__main__":
