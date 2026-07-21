@@ -16,7 +16,9 @@ Check items off as you go.
 - 🟢 Orchestrator with tension curve + stress safety back-off
 - 🟢 HTTP + WebSocket API (sessions, generate, assets, eeg, stream)
 - 🟢 Tests (affect monotonicity, pipeline, API lifecycle) + demo script
-- 🟡 Vertex AI provider (structured generation implemented; media/GCS upload TODO)
+- 🟢 Vertex AI provider **verified live** (Gemini specs + Imagen concept art →
+  GCS), via the current `google-genai` SDK; Gemini on the `global` endpoint,
+  Imagen regional
 - 🟡 In-memory single-process state (not yet horizontally scalable)
 
 ---
@@ -44,7 +46,8 @@ Move from heuristics to a validated model behind the same `EEGChunk → AffectSt
 ## Workstream C — Generative assets
 Make the asset bank real, richer, and cheaper.
 
-- ⬜ **C1** Finish `VertexProvider`: call Imagen, upload PNGs to GCS, set `Asset.uri`
+- 🟢 **C1** `VertexProvider`: Imagen concept art uploaded to GCS, `Asset.uri` set
+  (verified live against project `eeg-horror`, bucket `dduhwycdgcdg`)
 - ⬜ **C2** Audio generation (music/SFX) via a real backend; produce loopable stems
 - ⬜ **C3** Map generation → an engine-consumable format (tilemap/graph the client can build)
 - ⬜ **C4** Prompt templating + guardrails (avoid disallowed/triggering content per player opt-outs)

@@ -103,6 +103,13 @@ uvicorn engine.main:app
 If the SDK or credentials are missing, the engine **logs a warning and falls
 back to the mock provider** so the prototype never hard-fails.
 
+**Verified live** against Vertex using the current `google-genai` SDK. Two
+endpoint details matter: **Gemini** text models are served from the **`global`**
+endpoint (`VERTEX_TEXT_LOCATION=global`, the default), while **Imagen** and the
+GCS bucket stay **regional** (`GCP_LOCATION=us-central1`). To reproduce a live
+generation without any key file, run `scripts/cloudshell_verify.sh` in Google
+Cloud Shell (keyless ADC).
+
 ---
 
 ## API surface
