@@ -1,0 +1,4 @@
+# Optional Google Cloud generative backend.
+# Only needed when ASSET_PROVIDER=vertex.
+-r requirements.txt
+google-cloud-aiplatform>=1.60

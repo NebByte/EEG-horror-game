@@ -1,0 +1,109 @@
+# Roadmap & Task Breakdown
+
+This is the plan to take the engine from **prototype** (what's in this repo) to a
+scalable product. Tasks are grouped into workstreams and sized to be ticketable.
+Check items off as you go.
+
+**Legend:** 🟢 done in prototype · 🟡 partial/stubbed · ⬜ not started
+
+---
+
+## Where we are (prototype — this repo)
+
+- 🟢 End-to-end loop runs offline (EEG simulator + mock asset provider)
+- 🟢 EEG → band powers → affect (fear / stress / arousal / engagement / valence)
+- 🟢 Asset pipeline with pluggable providers (`mock`, `vertex`)
+- 🟢 Orchestrator with tension curve + stress safety back-off
+- 🟢 HTTP + WebSocket API (sessions, generate, assets, eeg, stream)
+- 🟢 Tests (affect monotonicity, pipeline, API lifecycle) + demo script
+- 🟡 Vertex AI provider (structured generation implemented; media/GCS upload TODO)
+- 🟡 In-memory single-process state (not yet horizontally scalable)
+
+---
+
+## Workstream A — EEG hardware & ingestion
+Turn real headset data into clean `EEGChunk`s.
+
+- ⬜ **A1** Integrate a real headset SDK (LSL / Muse / OpenBCI / Emotiv) → adapter that emits `EEGChunk`
+- ⬜ **A2** Build a device gateway (client-side) that streams to the WS `/stream` endpoint
+- ⬜ **A3** Signal quality: contact/impedance check, dropout detection, per-channel gating
+- ⬜ **A4** Artifact rejection (eye blinks / EMG / motion) before band-power extraction
+- ⬜ **A5** Replace FFT periodogram with Welch + proper windowing/overlap
+- ⬜ **A6** Timestamp sync & jitter handling across channels
+
+## Workstream B — Affect model
+Move from heuristics to a validated model behind the same `EEGChunk → AffectState` interface.
+
+- ⬜ **B1** Calibration routine per player (baseline eyes-open/closed, resting FAA)
+- ⬜ **B2** Data collection protocol + labelling (self-report + stimulus tags) with consent
+- ⬜ **B3** Train a classifier/regressor (arousal/valence → fear/stress), validate against heuristics
+- ⬜ **B4** Serve it on a Vertex AI Endpoint; wire behind `infer_affect` as a strategy
+- ⬜ **B5** Online personalization / drift correction during a session
+- ⬜ **B6** Confidence-aware fusion (ignore low-SNR windows in the director)
+
+## Workstream C — Generative assets
+Make the asset bank real, richer, and cheaper.
+
+- ⬜ **C1** Finish `VertexProvider`: call Imagen, upload PNGs to GCS, set `Asset.uri`
+- ⬜ **C2** Audio generation (music/SFX) via a real backend; produce loopable stems
+- ⬜ **C3** Map generation → an engine-consumable format (tilemap/graph the client can build)
+- ⬜ **C4** Prompt templating + guardrails (avoid disallowed/triggering content per player opt-outs)
+- ⬜ **C5** Asset caching & dedup keyed on seed (don't regenerate identical banks)
+- ⬜ **C6** Streaming / just-in-time generation for long sessions (beyond the 4-mood bank)
+- ⬜ **C7** Cost controls: budgets, model tiering, batch generation
+
+## Workstream D — Experience / director
+Deeper, smarter real-time adaptation.
+
+- 🟢 **D1** Tension curve + mood selection + safety back-off (prototype)
+- ⬜ **D2** Richer director policy (pacing beats, jump-scare cooldowns, habituation modelling)
+- ⬜ **D3** Per-player fear model: learn what *this* player reacts to, weight assets accordingly
+- ⬜ **D4** Difficulty/comfort modes (intensity caps, opt-out categories)
+- ⬜ **D5** Deterministic replay of a session from recorded affect (for tuning/QA)
+- ⬜ **D6** A/B experiment hooks for director policies
+
+## Workstream E — Platform, API & scale
+Production-grade service.
+
+- ⬜ **E1** Move `SessionStore` to Redis/Firestore; make orchestrator state externalized
+- ⬜ **E2** AuthN/AuthZ (API keys / OAuth) + per-session ownership
+- ⬜ **E3** Async generation via Cloud Tasks/Pub-Sub + worker pool; job status API
+- ⬜ **E4** Deploy on Cloud Run/GKE; sticky-session LB for WebSockets; autoscaling
+- ⬜ **E5** Rate limiting, quotas, and backpressure on the stream endpoint
+- ⬜ **E6** Versioned API + OpenAPI client generation for the game engine
+- ⬜ **E7** Structured logging, metrics, tracing (affect/directive telemetry dashboards)
+
+## Workstream F — Game client integration
+Close the loop with an actual game.
+
+- ⬜ **F1** Reference Unity (or Unreal) client: consume `Directive`, resolve assets by URI/id
+- ⬜ **F2** Asset resolver: download/stream sounds, spawn characters, apply map mutations
+- ⬜ **F3** In-game debug overlay (live affect + directive + safety state)
+- ⬜ **F4** Latency budget & smoothing on the client side
+
+## Workstream G — Safety, ethics & compliance
+Non-negotiable before real users.
+
+- 🟡 **G1** Stress safety back-off (prototype implemented; needs clinical review + tuning)
+- ⬜ **G2** Informed consent flow; clear stop/pause; photosensitivity & health screening
+- ⬜ **G3** EEG data governance: encryption at rest/in transit, retention limits, deletion
+- ⬜ **G4** Privacy/regulatory review (EEG is sensitive personal data; GDPR/health-data rules)
+- ⬜ **G5** Content safety: honor per-player fear opt-outs end to end (generation + director)
+- ⬜ **G6** Red-team the safety rail (can the director get "stuck" escalating?)
+
+## Workstream H — Quality & DevEx
+- 🟢 **H1** Unit/integration tests + offline demo (prototype)
+- ⬜ **H2** CI (lint + type-check + tests) on PRs
+- ⬜ **H3** Load tests for the WS stream (concurrent sessions)
+- ⬜ **H4** Contract tests against a real Vertex sandbox
+- ⬜ **H5** Recorded-EEG fixtures for regression testing the affect model
+
+---
+
+## Suggested next 5 tasks (highest leverage)
+
+1. **C1** — finish the Vertex media path (Imagen → GCS) so generated assets are real.
+2. **F1/F2** — a minimal Unity client that consumes directives (proves the whole product).
+3. **E1** — externalize session state (unblocks scaling and multi-worker deploys).
+4. **A1** — one real headset adapter (proves the ingestion contract with hardware).
+5. **G2** — consent + stop flow (gate for any real-user test).
