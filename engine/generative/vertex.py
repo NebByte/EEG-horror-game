@@ -1,15 +1,16 @@
-"""Google Cloud Vertex AI provider.
+"""Google Cloud Vertex AI provider (google-genai SDK).
 
-Uses Gemini for text/structured generation (character + map + soundscape specs)
-and Imagen for concept art. When a GCS bucket is configured, generated images are
-uploaded and the object's ``gs://`` URI is stamped onto the asset.
+Uses the current ``google-genai`` SDK (the ``vertexai.generative_models`` SDK is
+deprecated / removed) to call Gemini for structured generation and Imagen for
+concept art. When a GCS bucket is configured, generated images are uploaded and
+the object's ``gs://`` URI is stamped onto the asset.
 
-The ``google-cloud-aiplatform`` / ``google-cloud-storage`` SDKs are imported
-lazily so the package installs and the mock path runs even when they're absent.
+SDKs (``google-genai``, ``google-cloud-storage``) are imported lazily so the
+package installs and the mock path runs even when they're absent.
 
-Auth follows Application Default Credentials (ADC): set
-``GOOGLE_APPLICATION_CREDENTIALS`` to a service-account key, or run in a GCP
-environment / ``gcloud auth application-default login`` locally.
+Auth follows Application Default Credentials (ADC): a service-account key via
+``GOOGLE_APPLICATION_CREDENTIALS``, or an authenticated environment such as
+Google Cloud Shell / ``gcloud auth application-default login``.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class VertexProvider(AssetProvider):
-    """Vertex AI-backed generation."""
+    """Vertex AI-backed generation via the google-genai SDK."""
 
     name = "vertex"
 
@@ -45,33 +46,19 @@ class VertexProvider(AssetProvider):
         self.text_model_name = text_model
         self.image_model_name = image_model
         self.gcs_bucket = gcs_bucket
-        self._text_model = None  # lazy init
-        self._image_model = None  # lazy init
-        self._storage_client = None  # lazy init
+        self._client = None  # lazy genai client
+        self._storage_client = None  # lazy GCS client
 
     # --- lazy SDK initialisers ----------------------------------------- #
-    def _ensure_vertex_init(self) -> None:
-        import vertexai
+    def _genai(self):
+        """Return a cached google-genai client bound to Vertex."""
+        if self._client is None:
+            from google import genai
 
-        vertexai.init(project=self.project, location=self.location)
-
-    def _text_model_or_init(self):
-        if self._text_model is None:
-            from vertexai.generative_models import GenerativeModel
-
-            self._ensure_vertex_init()
-            self._text_model = GenerativeModel(self.text_model_name)
-        return self._text_model
-
-    def _image_model_or_init(self):
-        if self._image_model is None:
-            from vertexai.preview.vision_models import ImageGenerationModel
-
-            self._ensure_vertex_init()
-            self._image_model = ImageGenerationModel.from_pretrained(
-                self.image_model_name
+            self._client = genai.Client(
+                vertexai=True, project=self.project, location=self.location
             )
-        return self._image_model
+        return self._client
 
     def _bucket(self):
         if self._storage_client is None:
@@ -82,21 +69,22 @@ class VertexProvider(AssetProvider):
 
     # --- generation helpers -------------------------------------------- #
     async def _generate_json(self, instruction: str) -> dict:
-        """Ask Gemini for a JSON object and parse it defensively."""
-        model = self._text_model_or_init()
-        prompt = (
-            instruction
-            + "\n\nRespond with a single minified JSON object and nothing else."
+        """Ask Gemini for a JSON object (forced via response_mime_type)."""
+        from google.genai import types
+
+        client = self._genai()
+        resp = client.models.generate_content(
+            model=self.text_model_name,
+            contents=instruction,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=1.0,
+            ),
         )
-        # The SDK call is synchronous; for the prototype we accept that. A
-        # production build would offload to a threadpool or use the async client.
-        resp = model.generate_content(prompt)
         text = (resp.text or "").strip()
         try:
-            if text.startswith("```"):
-                text = text.split("```")[1].removeprefix("json").strip()
             return json.loads(text)
-        except (ValueError, IndexError):
+        except ValueError:
             logger.warning("Vertex returned non-JSON; wrapping raw text.")
             return {"raw": text}
 
@@ -110,12 +98,18 @@ class VertexProvider(AssetProvider):
             logger.info("No GCS bucket configured; skipping image for %s", object_name)
             return None
         try:
-            model = self._image_model_or_init()
-            result = model.generate_images(prompt=prompt, number_of_images=1)
-            if not result:
+            from google.genai import types
+
+            client = self._genai()
+            resp = client.models.generate_images(
+                model=self.image_model_name,
+                prompt=prompt,
+                config=types.GenerateImagesConfig(number_of_images=1),
+            )
+            if not resp.generated_images:
                 logger.warning("Imagen returned no images for %s", object_name)
                 return None
-            image_bytes = result[0]._image_bytes  # SDK exposes raw PNG bytes
+            image_bytes = resp.generated_images[0].image.image_bytes
 
             blob = self._bucket().blob(object_name)
             blob.upload_from_string(image_bytes, content_type="image/png")
@@ -131,8 +125,8 @@ class VertexProvider(AssetProvider):
         instruction = (
             f"Design an ambient horror soundscape spec for a {seed.theme}. "
             f"Target mood: {mood}. Player fears: {', '.join(seed.fears)}. "
-            "Include keys: bpm (int), layers (list of strings), loopable (bool), "
-            "description (string)."
+            "Return JSON with keys: bpm (int), layers (list of strings), "
+            "loopable (bool), description (string)."
         )
         payload = await self._generate_json(instruction)
         return Asset(
@@ -147,8 +141,8 @@ class VertexProvider(AssetProvider):
     async def generate_character(self, seed: SeedProfile, mood: str) -> Asset:
         instruction = (
             f"Design a horror character for a {seed.theme} that embodies the "
-            f"player's fear of {', '.join(seed.fears)}. Mood: {mood}. Include "
-            "keys: name, description, behavior, aggression (0..1), "
+            f"player's fear of {', '.join(seed.fears)}. Mood: {mood}. Return "
+            "JSON with keys: name, description, behavior, aggression (0..1), "
             "image_prompt (a vivid concept-art prompt)."
         )
         payload = await self._generate_json(instruction)
@@ -174,8 +168,8 @@ class VertexProvider(AssetProvider):
     async def generate_map(self, seed: SeedProfile, mood: str) -> Asset:
         instruction = (
             f"Design a level layout for a {seed.theme}, tuned for a {mood} mood. "
-            "Include keys: rooms (int), lighting (string), hazards (list), "
-            "graph (list of {from, to} room connections)."
+            "Return JSON with keys: rooms (int), lighting (string), "
+            "hazards (list), graph (list of {from, to} room connections)."
         )
         payload = await self._generate_json(instruction)
         return Asset(
