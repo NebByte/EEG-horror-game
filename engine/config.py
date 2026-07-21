@@ -51,6 +51,12 @@ if _HAS_SETTINGS:
         # are not resolvable through the aiplatform SDK on all projects.
         vertex_text_model: str = "gemini-2.0-flash-001"
         vertex_image_model: str = "imagen-3.0-generate-002"
+        # Lyria music model (regional, us-central1) used for real audio when
+        # audio_provider="lyria".
+        vertex_music_model: str = "lyria-002"
+        # Audio backend: "none" (Gemini sound specs only, default) or "lyria"
+        # (generate real WAV soundscapes and upload to GCS).
+        audio_provider: str = "none"
         # Path to a service-account JSON key (optional; ADC is used otherwise).
         google_application_credentials: str | None = None
         # GCS bucket where generated media (images/audio) is uploaded. When
@@ -86,6 +92,8 @@ else:  # pragma: no cover - minimal shim used only when deps are absent
             self.vertex_image_model = os.getenv(
                 "VERTEX_IMAGE_MODEL", "imagen-3.0-generate-002"
             )
+            self.vertex_music_model = os.getenv("VERTEX_MUSIC_MODEL", "lyria-002")
+            self.audio_provider = os.getenv("AUDIO_PROVIDER", "none")
             self.google_application_credentials = os.getenv(
                 "GOOGLE_APPLICATION_CREDENTIALS"
             )

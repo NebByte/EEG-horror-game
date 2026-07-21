@@ -16,8 +16,11 @@ export ASSET_PROVIDER="vertex"
 export GCP_PROJECT="${GCP_PROJECT:-eeg-horror}"
 export GCP_LOCATION="${GCP_LOCATION:-us-central1}"
 export GCS_BUCKET="${GCS_BUCKET:-dduhwycdgcdg}"
+# Real audio via Lyria (set AUDIO_PROVIDER=none to get Gemini specs only).
+export AUDIO_PROVIDER="${AUDIO_PROVIDER:-lyria}"
 
 echo "==> Project: $GCP_PROJECT   Bucket: $GCS_BUCKET   Region: $GCP_LOCATION"
+echo "==> Audio provider: $AUDIO_PROVIDER"
 
 echo "==> Setting active project + Application Default Credentials"
 gcloud config set project "$GCP_PROJECT" >/dev/null

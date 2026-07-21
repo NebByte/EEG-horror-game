@@ -37,18 +37,22 @@ class VertexProvider(AssetProvider):
         image_model: str,
         gcs_bucket: str | None = None,
         text_location: str = "global",
+        music_model: str = "lyria-002",
+        audio_provider: str = "none",
     ) -> None:
         if not project:
             raise ValueError(
                 "GCP_PROJECT must be set to use the Vertex asset provider."
             )
         self.project = project
-        # Regional endpoint (Imagen + GCS).
+        # Regional endpoint (Imagen + Lyria + GCS).
         self.location = location
         # Gemini endpoint ("global" by default).
         self.text_location = text_location
         self.text_model_name = text_model
         self.image_model_name = image_model
+        self.music_model_name = music_model
+        self.audio_provider = audio_provider
         self.gcs_bucket = gcs_bucket
         self._text_client = None  # lazy genai client (global)
         self._image_client = None  # lazy genai client (regional)
@@ -135,6 +139,63 @@ class VertexProvider(AssetProvider):
             logger.exception("Image generation/upload failed for %s", object_name)
             return None
 
+    def _generate_and_upload_music(
+        self, prompt: str, negative_prompt: str, object_name: str
+    ) -> str | None:
+        """Generate a WAV soundscape with Lyria, upload to GCS, return its URI.
+
+        Lyria is accessed via the regional ``:predict`` REST endpoint. Best-effort
+        like image generation: any failure returns ``None`` and is logged, so a
+        single audio hiccup never breaks the asset bank.
+        """
+        if self.audio_provider != "lyria" or not self.gcs_bucket:
+            return None
+        try:
+            import base64
+
+            import google.auth
+            import google.auth.transport.requests
+            import httpx  # bundled with google-genai
+
+            creds, _ = google.auth.default(
+                scopes=["https://www.googleapis.com/auth/cloud-platform"]
+            )
+            creds.refresh(google.auth.transport.requests.Request())
+
+            loc = self.location  # Lyria is regional
+            url = (
+                f"https://{loc}-aiplatform.googleapis.com/v1/projects/"
+                f"{self.project}/locations/{loc}/publishers/google/models/"
+                f"{self.music_model_name}:predict"
+            )
+            body = {
+                "instances": [
+                    {"prompt": prompt, "negative_prompt": negative_prompt}
+                ],
+                "parameters": {"sample_count": 1},
+            }
+            resp = httpx.post(
+                url,
+                json=body,
+                headers={"Authorization": f"Bearer {creds.token}"},
+                timeout=180.0,
+            )
+            resp.raise_for_status()
+            preds = resp.json().get("predictions", [])
+            if not preds or "audioContent" not in preds[0]:
+                logger.warning("Lyria returned no audio for %s", object_name)
+                return None
+            audio_bytes = base64.b64decode(preds[0]["audioContent"])
+
+            blob = self._bucket().blob(object_name)
+            blob.upload_from_string(audio_bytes, content_type="audio/wav")
+            uri = f"gs://{self.gcs_bucket}/{object_name}"
+            logger.info("Uploaded generated music -> %s", uri)
+            return uri
+        except Exception:  # noqa: BLE001 - media is best-effort
+            logger.exception("Music generation/upload failed for %s", object_name)
+            return None
+
     # --- provider API --------------------------------------------------- #
     async def generate_soundscape(self, seed: SeedProfile, mood: str) -> Asset:
         instruction = (
@@ -144,11 +205,25 @@ class VertexProvider(AssetProvider):
             "loopable (bool), description (string)."
         )
         payload = await self._generate_json(instruction)
+
+        asset_id = f"snd-{mood}-{abs(hash((seed.theme, mood))) % 10**8}"
+        # Turn the Gemini spec into a Lyria music prompt.
+        music_prompt = (
+            f"{payload.get('description', '')} Ambient horror score for a "
+            f"{seed.theme}, {mood} mood, instrumental, atmospheric, loopable."
+        ).strip()
+        uri = self._generate_and_upload_music(
+            music_prompt,
+            negative_prompt="vocals, lyrics, spoken word, upbeat, cheerful",
+            object_name=f"sounds/{asset_id}.wav",
+        )
+
         return Asset(
-            id=f"snd-{mood}-{abs(hash((seed.theme, mood))) % 10**8}",
+            id=asset_id,
             kind=AssetKind.sound,
             name=f"{mood}-ambience",
             prompt=instruction,
+            uri=uri,
             payload=payload,
             tags=[mood, "ambient"],
         )

@@ -74,19 +74,31 @@ async def main() -> None:
     for s in bank.sounds:
         print(f"  [{','.join(s.tags)}] {s.name}: bpm={s.payload.get('bpm')} "
               f"layers={s.payload.get('layers')}")
+        print(f"    uri: {s.uri}")
 
     print("\nMAPS:")
     for m in bank.maps:
         print(f"  [{','.join(m.tags)}] {m.name}: rooms={m.payload.get('rooms')} "
               f"lighting={m.payload.get('lighting')}")
 
-    with_media = [c for c in bank.characters if c.uri and c.uri.startswith("gs://")]
+    img_media = [c for c in bank.characters if c.uri and c.uri.startswith("gs://")]
+    aud_media = [s for s in bank.sounds if s.uri and s.uri.startswith("gs://")]
     print(
-        f"\n✔ {len(with_media)}/{len(bank.characters)} characters have live "
-        f"gs:// media URIs."
-        if with_media
-        else "\n⚠ No gs:// media URIs — check GCS_BUCKET and the Imagen model access."
+        f"\n✔ images: {len(img_media)}/{len(bank.characters)} characters have "
+        f"live gs:// URIs."
+        if img_media
+        else "\n⚠ No image gs:// URIs — check GCS_BUCKET and Imagen access."
     )
+    if settings.audio_provider == "lyria":
+        print(
+            f"✔ audio: {len(aud_media)}/{len(bank.sounds)} sounds have live "
+            f"gs:// URIs (Lyria)."
+            if aud_media
+            else "⚠ No audio gs:// URIs — check Lyria (lyria-002) access in "
+            f"{settings.gcp_location}."
+        )
+    else:
+        print("· audio: spec-only (AUDIO_PROVIDER=none).")
 
 
 def _list_available_models(settings) -> None:

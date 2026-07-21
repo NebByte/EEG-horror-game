@@ -48,7 +48,16 @@ Make the asset bank real, richer, and cheaper.
 
 - 🟢 **C1** `VertexProvider`: Imagen concept art uploaded to GCS, `Asset.uri` set
   (verified live against project `eeg-horror`, bucket `dduhwycdgcdg`)
-- ⬜ **C2** Audio generation (music/SFX) via a real backend; produce loopable stems
+- 🟡 **C2** Audio generation via **Lyria** (`lyria-002`): Gemini sound spec →
+  Lyria music prompt → WAV uploaded to GCS, `Asset.uri` set. Enabled with
+  `AUDIO_PROVIDER=lyria`. **Remaining to fully close C2:**
+  - ⬜ Verify live (run `cloudshell_verify.sh`; confirm `gs://…/sounds/*.wav`)
+  - ⬜ Seamless looping: Lyria clips are ~30s and not loop-safe — add
+    crossfade/loop-point processing (e.g. ffmpeg) for gapless ambience
+  - ⬜ Stems/SFX: Lyria is instrumental music only; add discrete SFX + stingers
+    (separate model/library) and layer them per the spec's `layers`
+  - ⬜ Cost/perf: cache by (theme, mood) and generate audio lazily (it's the
+    slowest asset), plus a length/parameter budget
 - ⬜ **C3** Map generation → an engine-consumable format (tilemap/graph the client can build)
 - ⬜ **C4** Prompt templating + guardrails (avoid disallowed/triggering content per player opt-outs)
 - ⬜ **C5** Asset caching & dedup keyed on seed (don't regenerate identical banks)
