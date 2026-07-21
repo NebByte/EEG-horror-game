@@ -43,8 +43,10 @@ if _HAS_SETTINGS:
         # --- Google Cloud / Vertex AI ---
         gcp_project: str | None = None
         gcp_location: str = "us-central1"
-        vertex_text_model: str = "gemini-2.0-flash"
-        vertex_image_model: str = "imagen-3.0-generate-001"
+        # Use fully-versioned GA model IDs; bare aliases (e.g. "gemini-2.0-flash")
+        # are not resolvable through the aiplatform SDK on all projects.
+        vertex_text_model: str = "gemini-2.0-flash-001"
+        vertex_image_model: str = "imagen-3.0-generate-002"
         # Path to a service-account JSON key (optional; ADC is used otherwise).
         google_application_credentials: str | None = None
         # GCS bucket where generated media (images/audio) is uploaded. When
@@ -73,9 +75,11 @@ else:  # pragma: no cover - minimal shim used only when deps are absent
             self.asset_provider = os.getenv("ASSET_PROVIDER", "mock")
             self.gcp_project = os.getenv("GCP_PROJECT")
             self.gcp_location = os.getenv("GCP_LOCATION", "us-central1")
-            self.vertex_text_model = os.getenv("VERTEX_TEXT_MODEL", "gemini-2.0-flash")
+            self.vertex_text_model = os.getenv(
+                "VERTEX_TEXT_MODEL", "gemini-2.0-flash-001"
+            )
             self.vertex_image_model = os.getenv(
-                "VERTEX_IMAGE_MODEL", "imagen-3.0-generate-001"
+                "VERTEX_IMAGE_MODEL", "imagen-3.0-generate-002"
             )
             self.google_application_credentials = os.getenv(
                 "GOOGLE_APPLICATION_CREDENTIALS"
