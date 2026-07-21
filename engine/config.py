@@ -47,10 +47,13 @@ if _HAS_SETTINGS:
         # Gemini text models are served from the "global" endpoint on Vertex;
         # a regional endpoint returns NOT_FOUND for them on many projects.
         vertex_text_location: str = "global"
-        # Use fully-versioned GA model IDs; bare aliases (e.g. "gemini-2.0-flash")
-        # are not resolvable through the aiplatform SDK on all projects.
-        vertex_text_model: str = "gemini-2.0-flash-001"
-        vertex_image_model: str = "imagen-3.0-generate-002"
+        # Use a current GA model; older ones (e.g. gemini-2.0-flash-001) may be
+        # listed but retired for inference and will 404 on generateContent.
+        vertex_text_model: str = "gemini-2.5-flash"
+        # Image model. A Gemini image model (…-image) uses generate_content;
+        # an "imagen-*" name uses the Imagen generate_images path. The provider
+        # picks the right call from the name.
+        vertex_image_model: str = "gemini-2.5-flash-image"
         # Lyria music model (regional, us-central1) used for real audio when
         # audio_provider="lyria".
         vertex_music_model: str = "lyria-002"
@@ -86,11 +89,9 @@ else:  # pragma: no cover - minimal shim used only when deps are absent
             self.gcp_project = os.getenv("GCP_PROJECT")
             self.gcp_location = os.getenv("GCP_LOCATION", "us-central1")
             self.vertex_text_location = os.getenv("VERTEX_TEXT_LOCATION", "global")
-            self.vertex_text_model = os.getenv(
-                "VERTEX_TEXT_MODEL", "gemini-2.0-flash-001"
-            )
+            self.vertex_text_model = os.getenv("VERTEX_TEXT_MODEL", "gemini-2.5-flash")
             self.vertex_image_model = os.getenv(
-                "VERTEX_IMAGE_MODEL", "imagen-3.0-generate-002"
+                "VERTEX_IMAGE_MODEL", "gemini-2.5-flash-image"
             )
             self.vertex_music_model = os.getenv("VERTEX_MUSIC_MODEL", "lyria-002")
             self.audio_provider = os.getenv("AUDIO_PROVIDER", "none")

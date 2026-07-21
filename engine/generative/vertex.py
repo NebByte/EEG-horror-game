@@ -107,8 +107,40 @@ class VertexProvider(AssetProvider):
             logger.warning("Vertex returned non-JSON; wrapping raw text.")
             return {"raw": text}
 
+    def _render_image_bytes(self, prompt: str) -> bytes | None:
+        """Return PNG bytes for ``prompt`` using the configured image model.
+
+        Two backends, selected by the model name:
+        * ``imagen-*``      -> Imagen ``generate_images``.
+        * ``gemini-*-image`` -> Gemini ``generate_content`` (inline image data).
+        """
+        from google.genai import types
+
+        client = self._genai_image()
+        model = self.image_model_name
+
+        if "imagen" in model.lower():
+            resp = client.models.generate_images(
+                model=model,
+                prompt=prompt,
+                config=types.GenerateImagesConfig(number_of_images=1),
+            )
+            if not resp.generated_images:
+                return None
+            return resp.generated_images[0].image.image_bytes
+
+        # Gemini image model: image comes back as inline_data on a part.
+        resp = client.models.generate_content(model=model, contents=prompt)
+        for cand in resp.candidates or []:
+            content = getattr(cand, "content", None)
+            for part in getattr(content, "parts", None) or []:
+                inline = getattr(part, "inline_data", None)
+                if inline and inline.data:
+                    return inline.data
+        return None
+
     def _generate_and_upload_image(self, prompt: str, object_name: str) -> str | None:
-        """Generate one image with Imagen, upload to GCS, return its gs:// URI.
+        """Generate one image, upload to GCS, return its gs:// URI.
 
         Returns ``None`` (and logs) if no bucket is configured or generation
         fails, so a media hiccup never breaks the whole asset bank.
@@ -117,18 +149,10 @@ class VertexProvider(AssetProvider):
             logger.info("No GCS bucket configured; skipping image for %s", object_name)
             return None
         try:
-            from google.genai import types
-
-            client = self._genai_image()
-            resp = client.models.generate_images(
-                model=self.image_model_name,
-                prompt=prompt,
-                config=types.GenerateImagesConfig(number_of_images=1),
-            )
-            if not resp.generated_images:
-                logger.warning("Imagen returned no images for %s", object_name)
+            image_bytes = self._render_image_bytes(prompt)
+            if not image_bytes:
+                logger.warning("Image model returned no bytes for %s", object_name)
                 return None
-            image_bytes = resp.generated_images[0].image.image_bytes
 
             blob = self._bucket().blob(object_name)
             blob.upload_from_string(image_bytes, content_type="image/png")
